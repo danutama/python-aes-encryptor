@@ -1,0 +1,158 @@
+CLASS AESEncryptor:
+    FUNCTION __init__(key):  # Konstruktor untuk kelas AESEncryptor
+        SET self.key = encode(key)  # Menyimpan kunci yang dienkode
+
+    FUNCTION encrypt(plaintext):  # Fungsi untuk mengenkripsi teks
+        INITIALIZE cipher = AES.new(self.key, AES.MODE_CBC)  # Membuat objek cipher baru
+        SET iv = cipher.iv  # Mengambil Initialization Vector (IV)
+        SET ciphertext = cipher.encrypt(pad(plaintext, AES.block_size))  # Mengenkripsi teks yang dipadatkan
+        RETURN iv + ciphertext  # Mengembalikan IV dan ciphertext
+
+    FUNCTION decrypt(iv, ciphertext):  # Fungsi untuk mendekripsi data
+        INITIALIZE cipher = AES.new(self.key, AES.MODE_CBC, iv)  # Membuat objek cipher baru dengan IV
+        SET plaintext = unpad(cipher.decrypt(ciphertext), AES.block_size)  # Mendekripsi dan menghapus padding
+        RETURN plaintext  # Mengembalikan plaintext
+
+CLASS FileEncryptor:
+    FUNCTION __init__(entry_file, entry_key, label_result):  # Konstruktor untuk kelas FileEncryptor
+        SET self.entry_file = entry_file  # Menyimpan referensi ke input file
+        SET self.entry_key = entry_key  # Menyimpan referensi ke input kunci
+        SET self.label_result = label_result  # Menyimpan referensi ke label hasil
+        SET self.file_handler = None  # Menyimpan handler file
+        SET self.timer = Timer()  # Inisialisasi timer
+
+    FUNCTION browse_file():  # Fungsi untuk menjelajahi file
+        SET filename = OPEN file dialog  # Membuka dialog untuk memilih file
+        DELETE content of self.entry_file  # Menghapus konten input file
+        INSERT filename into self.entry_file  # Menyimpan nama file yang dipilih ke input file
+
+    FUNCTION get_file_type(filename):  # Fungsi untuk mendapatkan tipe file
+        RETURN FileHandler.get_file_type(filename)  # Mengembalikan tipe file berdasarkan nama file
+
+    FUNCTION encrypt_file():  # Fungsi untuk mengenkripsi file
+        SET filename = self.entry_file.get()  # Mengambil nama file dari input
+        SET key = self.entry_key.get()  # Mengambil kunci dari input
+        INITIALIZE self.file_handler = FileHandler(filename, key)  # Membuat handler file baru
+
+        IF filename is empty:  # Memeriksa jika nama file kosong
+            SHOW error message "Masukkan file terlebih dahulu"  # Menampilkan pesan kesalahan
+            RETURN  # Menghentikan eksekusi
+
+        IF NOT self.file_handler.validate_key():  # Memeriksa validitas kunci
+            SHOW error message "Panjang kunci harus 16, 24, atau 32 karakter"  # Menampilkan pesan kesalahan
+            RETURN  # Menghentikan eksekusi
+
+        TRY:  # Blok percobaan
+            START timer  # Memulai timer
+            SET plaintext = self.file_handler.read_file()  # Membaca konten file
+            INITIALIZE aes_cipher = AESEncryptor(key)  # Membuat objek AESEncryptor
+            SET encrypted_data = aes_cipher.encrypt(plaintext)  # Mengenkripsi data
+            SET output_filename = filename + ".encrypted"  # Menentukan nama file output
+            SET self.file_handler.filename = output_filename  # Mengatur nama file handler
+            self.file_handler.write_file(encrypted_data)  # Menulis data terenkripsi ke file
+            STOP timer  # Menghentikan timer
+            SET elapsed_time = timer.elapsed_time()  # Menghitung waktu yang berlalu
+            SET file_type = self.get_file_type(filename)  # Mendapatkan tipe file
+            UPDATE self.label_result with status message  # Memperbarui label hasil dengan pesan status
+        EXCEPT Exception as e:  # Menangkap pengecualian
+            SHOW error message str(e)  # Menampilkan pesan kesalahan
+
+    FUNCTION decrypt_file():  # Fungsi untuk mendekripsi file
+        SET filename = self.entry_file.get()  # Mengambil nama file dari input
+        SET key = self.entry_key.get()  # Mengambil kunci dari input
+        INITIALIZE self.file_handler = FileHandler(filename, key)  # Membuat handler file baru
+
+        IF filename is empty:  # Memeriksa jika nama file kosong
+            SHOW error message "Masukkan file terlebih dahulu"  # Menampilkan pesan kesalahan
+            RETURN  # Menghentikan eksekusi
+
+        IF NOT self.file_handler.validate_key():  # Memeriksa validitas kunci
+            SHOW error message "Panjang kunci harus 16, 24, atau 32 karakter"  # Menampilkan pesan kesalahan
+            RETURN  # Menghentikan eksekusi
+
+        IF filename does not end with ".encrypted":  # Memeriksa jika file tidak berakhiran ".encrypted"
+            SHOW error message "File yang dipilih bukan file terenkripsi (.encrypted)"  # Menampilkan pesan kesalahan
+            RETURN  # Menghentikan eksekusi
+
+        TRY:  # Blok percobaan
+            START timer  # Memulai timer
+            SET iv_and_ciphertext = self.file_handler.read_file()  # Membaca file terenkripsi
+            SET iv = iv_and_ciphertext[:16]  # Mengambil IV dari ciphertext
+            SET ciphertext = iv_and_ciphertext[16:]  # Mengambil ciphertext
+            INITIALIZE aes_cipher = AESEncryptor(key)  # Membuat objek AESEncryptor
+            SET plaintext = aes_cipher.decrypt(iv, ciphertext)  # Mendekripsi data
+            SET output_filename = filename[:-10]  # Menentukan nama file output
+            SET self.file_handler.filename = output_filename  # Mengatur nama file handler
+            self.file_handler.write_file(plaintext)  # Menulis plaintext ke file
+            STOP timer  # Menghentikan timer
+            SET elapsed_time = timer.elapsed_time()  # Menghitung waktu yang berlalu
+            SET file_type = self.get_file_type(output_filename)  # Mendapatkan tipe file
+            UPDATE self.label_result with status message  # Memperbarui label hasil dengan pesan status
+        EXCEPT ValueError as e:  # Menangkap ValueError
+            SHOW error message "Dekripsi gagal: Kunci salah atau file rusak"  # Menampilkan pesan kesalahan
+        EXCEPT Exception as e:  # Menangkap pengecualian lainnya
+            SHOW error message str(e)  # Menampilkan pesan kesalahan
+
+    FUNCTION refresh():  # Fungsi untuk menyegarkan input dan label hasil
+        DELETE content of self.entry_file  # Menghapus konten input file
+        DELETE content of self.entry_key  # Menghapus konten input kunci
+        UPDATE self.label_result with default status  # Mengembalikan label hasil ke status default
+
+CLASS FileHandler:
+    FUNCTION __init__(filename='', key=''):  # Konstruktor untuk kelas FileHandler
+        SET self.filename = filename  # Menyimpan nama file
+        SET self.key = key  # Menyimpan kunci
+
+    FUNCTION read_file():  # Fungsi untuk membaca file
+        OPEN self.filename in binary mode  # Membuka file dalam mode biner
+        RETURN content of the file  # Mengembalikan konten file
+
+    FUNCTION write_file(data):  # Fungsi untuk menulis file
+        OPEN self.filename in binary mode  # Membuka file dalam mode biner
+        WRITE data to the file  # Menulis data ke file
+
+    FUNCTION validate_key():  # Fungsi untuk memvalidasi kunci
+        RETURN True if length of self.key is 16, 24, or 32  # Mengembalikan True jika panjang kunci valid
+
+    STATIC FUNCTION get_file_type(filename):  # Fungsi statis untuk mendapatkan tipe file
+        SET ext = get file extension from filename  # Mengambil ekstensi dari nama file
+        RETURN file type based on ext  # Mengembalikan tipe file berdasarkan ekstensi
+
+CLASS Timer:
+    FUNCTION __init__():  # Konstruktor untuk kelas Timer
+        SET self.start_time = 0  # Menyimpan waktu mulai
+        SET self.end_time = 0  # Menyimpan waktu akhir
+
+    FUNCTION start():  # Fungsi untuk memulai timer
+        SET self.start_time = current time  # Menyimpan waktu saat timer dimulai
+
+    FUNCTION stop():  # Fungsi untuk menghentikan timer
+        SET self.end_time = current time  # Menyimpan waktu saat timer dihentikan
+
+    FUNCTION elapsed_time():  # Fungsi untuk menghitung waktu yang berlalu
+        RETURN self.end_time - self.start_time  # Mengembalikan selisih waktu
+
+CLASS Tk:
+    FUNCTION __init__(...):  # Konstruktor untuk kelas Tk
+        CONFIGURE window  # Mengatur konfigurasi jendela
+
+CLASS TTk:
+    FUNCTION __init__(...):  # Konstruktor untuk kelas TTk
+        CONFIGURE frame  # Mengatur konfigurasi frame
+
+CLASS App:
+    FUNCTION __init__(root):  # Konstruktor untuk kelas App
+        SET self.root = root  # Menyimpan referensi ke root
+        CONFIGURE application window  # Mengatur konfigurasi jendela aplikasi
+        INITIALIZE self.file_encryptor  # Membuat objek FileEncryptor
+
+    FUNCTION create_widgets():  # Fungsi untuk membuat widget
+        CREATE labels, buttons, and input fields  # Membuat label, tombol, dan input field
+
+    FUNCTION run():  # Fungsi untuk menjalankan aplikasi
+        START main loop  # Memulai loop utama aplikasi
+
+IF __name__ == "__main__":  # Memeriksa jika file dieksekusi langsung
+    INITIALIZE Tk()  # Membuat instance Tk
+    INITIALIZE App(root)  # Membuat instance App
+    root.mainloop()  # Memulai loop utama
